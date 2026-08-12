@@ -10,16 +10,15 @@ type Task = {
   createdAt: string;
 };
 
-const TEAM = ["Yasaswitha", "Rishika", "Tejaswini"];
-
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
-  const [addedBy, setAddedBy] = useState(TEAM[0]);
+  const [addedBy, setAddedBy] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryCooldown, setSummaryCooldown] = useState(false);
 
   async function loadTasks() {
     setLoading(true);
@@ -31,11 +30,14 @@ export default function Home() {
 
   useEffect(() => {
     loadTasks();
+    const savedName = window.localStorage.getItem("stb_name");
+    if (savedName) setAddedBy(savedName);
   }, []);
 
   async function addTask(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !addedBy.trim()) return;
+    window.localStorage.setItem("stb_name", addedBy.trim());
     setSubmitting(true);
     await fetch("/api/tasks", {
       method: "POST",
@@ -59,18 +61,22 @@ export default function Home() {
     });
   }
 
-  async function deleteTask(id: string) {
+  async function deleteTask(id: string, title: string) {
+    if (!window.confirm(`Delete "${title}"? This can't be undone.`)) return;
     setTasks((prev) => prev.filter((t) => t.id !== id));
     await fetch(`/api/tasks/${id}`, { method: "DELETE" });
   }
 
   async function getSummary() {
+    if (summaryCooldown) return;
     setSummaryLoading(true);
     setSummary(null);
     const res = await fetch("/api/ai/summary", { method: "POST" });
     const data = await res.json();
     setSummary(data.summary || data.error || "Something went wrong.");
     setSummaryLoading(false);
+    setSummaryCooldown(true);
+    setTimeout(() => setSummaryCooldown(false), 15000); // 15s cooldown to limit AI cost
   }
 
   const todo = tasks.filter((t) => t.status === "todo");
@@ -105,20 +111,17 @@ export default function Home() {
             placeholder="What needs to get done?"
             className="flex-1 rounded-md border border-line bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-moss"
           />
-          <select
+          <input
+            type="text"
             value={addedBy}
             onChange={(e) => setAddedBy(e.target.value)}
-            className="rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-moss"
-          >
-            {TEAM.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            placeholder="Your name"
+            maxLength={50}
+            className="w-full rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-moss md:w-40"
+          />
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !title.trim() || !addedBy.trim()}
             className="rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-chalk transition hover:bg-moss disabled:opacity-50"
           >
             {submitting ? "Adding…" : "Add task"}
@@ -138,10 +141,14 @@ export default function Home() {
             </div>
             <button
               onClick={getSummary}
-              disabled={summaryLoading}
+              disabled={summaryLoading || summaryCooldown}
               className="whitespace-nowrap rounded-md border border-rust px-4 py-2 text-sm font-medium text-rust transition hover:bg-rust hover:text-chalk disabled:opacity-50"
             >
-              {summaryLoading ? "Thinking…" : "Get AI summary"}
+              {summaryLoading
+                ? "Thinking…"
+                : summaryCooldown
+                ? "Wait a few seconds…"
+                : "Get AI summary"}
             </button>
           </div>
           {summary && (
@@ -169,7 +176,7 @@ export default function Home() {
                     key={task.id}
                     task={task}
                     onToggle={() => toggleStatus(task)}
-                    onDelete={() => deleteTask(task.id)}
+                    onDelete={() => deleteTask(task.id, task.title)}
                   />
                 ))}
               </ul>
@@ -188,7 +195,7 @@ export default function Home() {
                     key={task.id}
                     task={task}
                     onToggle={() => toggleStatus(task)}
-                    onDelete={() => deleteTask(task.id)}
+                    onDelete={() => deleteTask(task.id, task.title)}
                   />
                 ))}
               </ul>

@@ -21,6 +21,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (body.title.trim().length > 200) {
+    return NextResponse.json(
+      { error: "Task title must be under 200 characters." },
+      { status: 400 }
+    );
+  }
+
+  if (body.addedBy && typeof body.addedBy === "string" && body.addedBy.trim().length > 50) {
+    return NextResponse.json(
+      { error: "Name must be under 50 characters." },
+      { status: 400 }
+    );
+  }
+
   const task = await prisma.task.create({
     data: {
       title: body.title.trim(),

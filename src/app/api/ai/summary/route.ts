@@ -1,10 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Basic in-memory cooldown so the AI route can't be spammed by repeated
+// requests (protects your Anthropic API usage/cost). Note: this resets
+// whenever the server restarts and isn't shared across serverless
+// instances - it's a lightweight guard, not a strict rate limiter.
+let lastRequestAt = 0;
+const COOLDOWN_MS = 10_000;
+
 // POST /api/ai/summary
 // Reads all pending ("todo") tasks and asks Claude to summarize
 // and suggest a priority order for tackling them.
 export async function POST() {
+  const now = Date.now();
+  if (now - lastRequestAt < COOLDOWN_MS) {
+    return NextResponse.json(
+      { error: "Please wait a few seconds before requesting another summary." },
+      { status: 429 }
+    );
+  }
+  lastRequestAt = now;
+
   const pendingTasks = await prisma.task.findMany({
     where: { status: "todo" },
     orderBy: { createdAt: "asc" },
