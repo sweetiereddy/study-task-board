@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Basic in-memory cooldown so the AI route can't be spammed by repeated
-// requests (protects your Anthropic API usage/cost). Note: this resets
-// whenever the server restarts and isn't shared across serverless
-// instances - it's a lightweight guard, not a strict rate limiter.
 let lastRequestAt = 0;
 const COOLDOWN_MS = 10_000;
 
-// POST /api/ai/summary
-// Reads all pending ("todo") tasks and asks Claude to summarize
-// and suggest a priority order for tackling them.
 export async function POST() {
   const now = Date.now();
   if (now - lastRequestAt < COOLDOWN_MS) {
@@ -41,15 +34,14 @@ export async function POST() {
     );
   }
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: "openai/gpt-oss-20b:free",
       max_tokens: 400,
       messages: [
         {
@@ -69,12 +61,7 @@ export async function POST() {
   }
 
   const data = await response.json();
-  const summary = data.content
-    ?.map((block: { type: string; text?: string }) =>
-      block.type === "text" ? block.text : ""
-    )
-    .join("\n")
-    .trim();
+  const summary = data.choices?.[0]?.message?.content?.trim();
 
   return NextResponse.json({ summary: summary || "No summary generated." });
 }
